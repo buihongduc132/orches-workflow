@@ -1,0 +1,101 @@
+name: AI Task
+description: Task for AI agent execution with structured workflow
+title: "TASK-[DATE]-[SEQ] [TITLE] (FEAT-[ID])"
+labels: ["ai-task", "type:task"]
+assignees:
+  - buihongduc132
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which architectural component does this task belong to?
+      options:
+        - orches
+        - extension
+        - proxy
+        - dc
+    validations:
+      required: true
+  
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: Task priority level
+      options:
+        - P0
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true
+  
+  - type: input
+    id: feature_id
+    attributes:
+      label: Feature ID
+      description: Associated feature identifier
+      placeholder: "FEAT-ddmmmyy-seq (e.g., FEAT-27aug25-001)"
+    validations:
+      required: true
+  
+  - type: input
+    id: ai_agent
+    attributes:
+      label: AI Agent
+      description: Which AI agent will handle this task?
+      placeholder: "claude-3.5, gpt-4, gemini-pro, etc."
+    validations:
+      required: false
+  
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Brief context (2-4 sentences max). Link to Feature wiki page if available.
+      placeholder: |
+        Brief description of what needs to be done and why.
+        Link to feature wiki: wiki/Features/FEAT-xxx.md
+    validations:
+      required: true
+  
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Checklist of requirements that must be met
+      placeholder: |
+        - [ ] Requirement 1
+        - [ ] Requirement 2
+        - [ ] Tests written and passing
+        - [ ] Documentation updated
+        - [ ] Code review completed
+    validations:
+      required: true
+  
+  - type: textarea
+    id: technical_notes
+    attributes:
+      label: Technical Notes
+      description: Any technical considerations, constraints, or implementation hints
+      placeholder: |
+        - Implementation approach
+        - Dependencies or blockers
+        - Performance considerations
+        - Security considerations
+    validations:
+      required: false
+  
+  - type: textarea
+    id: links
+    attributes:
+      label: Related Links
+      description: Links to related issues, PRs, discussions, or documentation
+      placeholder: |
+        - Feature Discussion: #xxx
+        - Related Issues: #xxx, #xxx
+        - Documentation: wiki/xxx.md
+        - External References: https://...
+    validations:
+      required: false

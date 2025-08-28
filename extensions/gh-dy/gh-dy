@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-help}" in
+  --help|help)
+    cat <<H
+gh dy - day-to-day AI workflow
+Commands:
+  task [create|claim|progress|block|review|close|link|add-to-project]
+  dashboard [agent|review|blocked|xcomp]
+  triage [auto|assign|stale]
+  pr [await|queue|checks|draft|merge-if-green]
+  discuss [feature|comment|link]
+  workflow describe
+  feedback
+Use --repo owner/repo to target a repo; auto-detects when omitted.
+H
+    ;;
+  --help-admin)
+    if command -v gh-dy-admin >/dev/null 2>&1; then gh-dy-admin --help; else echo "Admin extension not installed. Run: gh extension install <owner>/gh-dy-admin"; fi
+    ;;
+  admin)
+    shift
+    if command -v gh-dy-admin >/dev/null 2>&1; then exec gh-dy-admin "$@"; else echo "Admin extension not installed. Run: gh extension install <owner>/gh-dy-admin"; exit 1; fi
+    ;;
+  *)
+    echo "TODO: implement subcommands. Use 'gh dy --help' for usage.";
+    ;;
+ esac

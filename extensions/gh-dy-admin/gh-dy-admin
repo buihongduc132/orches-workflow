@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-help}" in
+  --help|help)
+    cat <<H
+gh dy-admin - admin/setup for AI workflow
+Commands:
+  setup [project|labels|templates|repo|discussions]
+  project [ensure-fields|status]
+  label ensure
+  template [issues|prs]
+  workflow describe
+  feedback
+H
+    ;;
+  *)
+    echo "TODO: implement admin subcommands. Use 'gh dy-admin --help' for usage.";
+    ;;
+ esac
