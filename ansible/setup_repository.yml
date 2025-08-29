@@ -1,0 +1,183 @@
+---
+# Task file for setting up individual repositories
+- name: Setup repository {{ repo.name }}
+  vars:
+    repo_name: "{{ repo.name }}"
+    repo_full_name: "{{ github_org }}/{{ repo.name }}"
+    repo_private: "{{ repo.private | default(true) }}"
+  block:
+    - name: Check if repository exists
+      uri:
+        url: "https://api.github.com/repos/{{ repo_full_name }}"
+        headers:
+          Authorization: "token {{ github_token }}"
+        method: GET
+        status_code: [200, 404]
+      register: repo_check
+
+    - name: Create repository if it doesn't exist
+      uri:
+        url: "https://api.github.com/orgs/{{ github_org }}/repos"
+        headers:
+          Authorization: "token {{ github_token }}"
+          Content-Type: "application/json"
+        method: POST
+        body_format: json
+        body:
+          name: "{{ repo_name }}"
+          private: "{{ repo_private }}"
+          description: "Repository with Orches Workflow"
+          auto_init: true
+        status_code: 201
+      when: repo_check.status == 404
+      register: repo_created
+
+    - name: Wait for repository to be ready
+      pause:
+        seconds: 5
+      when: repo_created is defined and repo_created.changed
+
+    - name: Setup repository labels
+      command: >
+        {{ temp_dir.path }}/labels-ensure.sh
+        {{ repo_full_name }}
+      environment:
+        GITHUB_TOKEN: "{{ github_token }}"
+      register: labels_result
+      failed_when: labels_result.rc != 0
+
+    - name: Create .github/workflows directory structure
+      uri:
+        url: "https://api.github.com/repos/{{ repo_full_name }}/contents/.github/workflows/.gitkeep"
+        headers:
+          Authorization: "token {{ github_token }}"
+          Content-Type: "application/json"
+        method: PUT
+        body_format: json
+        body:
+          message: "Create workflows directory for Orches Workflow"
+          content: "{{ 'This file ensures the workflows directory exists' | b64encode }}"
+        status_code: [201, 422]  # 422 if file already exists
+      ignore_errors: true
+
+    - name: Install GitHub Actions workflows
+      uri:
+        url: "https://api.github.com/repos/{{ repo_full_name }}/contents/.github/workflows/{{ item.dest }}"
+        headers:
+          Authorization: "token {{ github_token }}"
+          Content-Type: "application/json"
+        method: PUT
+        body_format: json
+        body:
+          message: "Add {{ item.description }} workflow via Orches Workflow setup"
+          content: "{{ lookup('file', temp_dir.path + '/' + item.src) | b64encode }}"
+        status_code: [201, 422]  # 422 if file already exists
+      loop: "{{ workflow_files }}"
+      register: workflow_install_results
+      ignore_errors: true
+
+    - name: Setup branch protection for main branch
+      uri:
+        url: "https://api.github.com/repos/{{ repo_full_name }}/branches/main/protection"
+        headers:
+          Authorization: "token {{ github_token }}"
+          Content-Type: "application/json"
+        method: PUT
+        body_format: json
+        body:
+          required_status_checks:
+            strict: true
+            contexts: ["validate", "validate-links", "enforce-pr-only"]
+          enforce_admins: false  # Allow admins to bypass for emergency fixes
+          required_pull_request_reviews:
+            required_approving_review_count: 1
+            dismiss_stale_reviews: true
+            require_code_owner_reviews: false
+          restrictions: null
+          allow_force_pushes: false
+          allow_deletions: false
+        status_code: [200, 422]  # 422 if branch doesn't exist or protection already set
+      register: branch_protection_result
+      ignore_errors: true
+
+    - name: Create PR template
+      uri:
+        url: "https://api.github.com/repos/{{ repo_full_name }}/contents/.github/pull_request_template.md"
+        headers:
+          Authorization: "token {{ github_token }}"
+          Content-Type: "application/json"
+        method: PUT
+        body_format: json
+        body:
+          message: "Add PR template for Orches Workflow"
+          content: "{{ pr_template_content | b64encode }}"
+        status_code: [201, 422]
+      vars:
+        pr_template_content: |
+          ## Description
+          Brief description of the changes in this PR.
+
+          ## Related Links
+          <!-- All PRs must include relevant links -->
+          - **Issue**: #<!-- issue number or full GitHub URL -->
+          - **Documentation**: <!-- Link to wiki, docs, or relevant .md files -->
+          - **Task/Project**: <!-- Optional: Link to project board or task -->
+
+          ## Type of Change
+          - [ ] Bug fix (non-breaking change which fixes an issue)
+          - [ ] New feature (non-breaking change which adds functionality)
+          - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+          - [ ] Documentation update
+          - [ ] Refactoring (no functional changes)
+
+          ## AI Agent Information
+          <!-- If this PR was generated or assisted by AI, please specify -->
+          - **AI Agent**: <!-- e.g., GPT-4, Claude-3, etc. -->
+          - **Human Review**: <!-- Required for AI-generated code -->
+
+          ## Testing
+          - [ ] Tests pass locally
+          - [ ] New tests added for new functionality
+          - [ ] Documentation updated
+
+          ## Checklist
+          - [ ] Code follows project style guidelines
+          - [ ] Self-review completed
+          - [ ] Linked to relevant issue/documentation
+          - [ ] Breaking changes documented (if applicable)
+          - [ ] Ready for review
+      ignore_errors: true
+
+    - name: Create issue templates directory
+      uri:
+        url: "https://api.github.com/repos/{{ repo_full_name }}/contents/.github/ISSUE_TEMPLATE/config.yml"
+        headers:
+          Authorization: "token {{ github_token }}"
+          Content-Type: "application/json"
+        method: PUT
+        body_format: json
+        body:
+          message: "Add issue template config for Orches Workflow"
+          content: "{{ issue_config_content | b64encode }}"
+        status_code: [201, 422]
+      vars:
+        issue_config_content: |
+          blank_issues_enabled: true
+          contact_links:
+            - name: 📚 Documentation
+              url: https://github.com/{{ github_org }}/{{ repo_name }}/wiki
+              about: Check the project wiki for documentation
+            - name: 💬 Discussions
+              url: https://github.com/{{ github_org }}/{{ repo_name }}/discussions
+              about: Ask questions and discuss ideas
+      ignore_errors: true
+
+    - name: Report repository setup status
+      debug:
+        msg: |
+          Repository {{ repo_full_name }} setup completed:
+          - Repository exists: {{ 'Created' if (repo_created is defined and repo_created.changed) else 'Already exists' }}
+          - Labels: {{ 'Configured' if labels_result.rc == 0 else 'Failed' }}
+          - Workflows: {{ workflow_install_results.results | selectattr('status', 'equalto', 201) | list | length }}/{{ workflow_files | length }} installed
+          - Branch protection: {{ 'Configured' if (branch_protection_result.status == 200) else 'Skipped/Failed' }}
+          - Templates: Added PR and issue templates

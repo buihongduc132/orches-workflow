@@ -1,0 +1,39 @@
+---
+# Example Ansible inventory for Orches Workflow replication
+# Copy this file to inventory.yml and customize for your organization
+
+all:
+  vars:
+    # GitHub authentication - set via environment variable
+    github_token: "{{ lookup('env', 'GITHUB_TOKEN') }}"
+    
+    # Your GitHub organization
+    github_org: "your-org-name"
+    
+    # GitHub Project number for organization-wide tracking
+    github_project_number: 1
+    
+    # Cleanup temporary files after setup (default: true)
+    cleanup_temp_files: true
+    
+  hosts:
+    localhost:
+      ansible_connection: local
+      ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+# Example for multiple environments
+development:
+  vars:
+    github_org: "your-org-dev"
+    github_project_number: 1
+  hosts:
+    localhost:
+      ansible_connection: local
+
+production:
+  vars:
+    github_org: "your-org-prod"
+    github_project_number: 2
+  hosts:
+    localhost:
+      ansible_connection: local

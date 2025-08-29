@@ -1,0 +1,230 @@
+---
+- name: Replicate Orches Workflow to Target Repositories
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  
+  vars:
+    # Default values - override in inventory or command line
+    github_token: "{{ lookup('env', 'GITHUB_TOKEN') }}"
+    github_org: "{{ github_org | default('your-org') }}"
+    github_project_number: "{{ github_project_number | default(1) }}"
+    orches_repo: "buihongduc132/orches-workflow"
+    
+    # Default repositories to setup (override in vars file)
+    repositories: []
+    
+    # Default labels to create
+    workflow_labels:
+      - name: "ai-task"
+        color: "1f883d"
+        description: "Task for AI agents"
+      - name: "human-review-needed"
+        color: "fbca04"
+        description: "Needs human attention"
+      - name: "cross-component"
+        color: "8250df"
+        description: "Spans multiple components"
+      - name: "status:ai-review"
+        color: "0e8a16"
+        description: "AI review stage"
+      - name: "status:ai-test"
+        color: "0e8a16"
+        description: "AI test stage"
+      - name: "status:ai-approved"
+        color: "1f883d"
+        description: "AI approved stage"
+    
+    # GitHub Actions workflows to install
+    workflow_files:
+      - src: "validate-pr-scope.yml"
+        dest: "validate-pr-scope.yml"
+        description: "PR scope validation"
+      - src: "enforce-pr-links.yml"
+        dest: "enforce-pr-links.yml"
+        description: "PR documentation link enforcement"
+      - src: "branch-protection.yml"
+        dest: "branch-protection.yml"
+        description: "Branch protection rules"
+
+  tasks:
+    - name: Validate required variables
+      fail:
+        msg: "GitHub token is required. Set GITHUB_TOKEN environment variable."
+      when: github_token == ""
+
+    - name: Validate GitHub CLI is installed
+      command: gh --version
+      register: gh_version
+      failed_when: gh_version.rc != 0
+      changed_when: false
+
+    - name: Authenticate with GitHub CLI
+      command: gh auth status
+      register: gh_auth_status
+      failed_when: gh_auth_status.rc != 0
+      changed_when: false
+
+    - name: Create temporary directory for workflow files
+      tempfile:
+        state: directory
+        suffix: orches_workflow
+      register: temp_dir
+
+    - name: Download workflow templates
+      get_url:
+        url: "https://raw.githubusercontent.com/{{ orches_repo }}/main/templates/rules/{{ item.src }}"
+        dest: "{{ temp_dir.path }}/{{ item.src }}"
+        mode: '0644'
+      loop: "{{ workflow_files }}"
+      register: downloaded_templates
+
+    - name: Download bootstrap scripts
+      get_url:
+        url: "https://raw.githubusercontent.com/{{ orches_repo }}/main/scripts/{{ item }}"
+        dest: "{{ temp_dir.path }}/{{ item }}"
+        mode: '0755'
+      loop:
+        - "labels-ensure.sh"
+        - "project-ensure-fields.sh"
+
+    - name: Process each repository
+      include_tasks: setup_repository.yml
+      loop: "{{ repositories }}"
+      loop_control:
+        loop_var: repo
+      when: repositories | length > 0
+
+    - name: Install CLI extensions globally
+      block:
+        - name: Check if gh-dy extension is installed
+          command: gh extension list
+          register: installed_extensions
+          changed_when: false
+
+        - name: Install gh-dy extension
+          command: gh extension install {{ orches_repo.split('/')[0] }}/gh-dy
+          when: "'gh-dy' not in installed_extensions.stdout"
+
+        - name: Install gh-dy-admin extension
+          command: gh extension install {{ orches_repo.split('/')[0] }}/gh-dy-admin
+          when: "'gh-dy-admin' not in installed_extensions.stdout"
+
+    - name: Setup organization-wide project fields
+      command: >
+        {{ temp_dir.path }}/project-ensure-fields.sh
+        {{ github_org }}
+        {{ github_project_number }}
+      environment:
+        GITHUB_TOKEN: "{{ github_token }}"
+      when: github_project_number is defined
+
+    - name: Generate setup report
+      template:
+        src: setup_report.j2
+        dest: "{{ temp_dir.path }}/setup_report.md"
+      vars:
+        setup_timestamp: "{{ ansible_date_time.iso8601 }}"
+        processed_repos: "{{ repositories }}"
+
+    - name: Display setup summary
+      debug:
+        msg: |
+          Orches Workflow Setup Complete!
+          
+          Processed {{ repositories | length }} repositories
+          Installed CLI extensions: gh-dy, gh-dy-admin
+          Setup organization: {{ github_org }}
+          Project number: {{ github_project_number }}
+          
+          Setup report saved to: {{ temp_dir.path }}/setup_report.md
+          
+          Next steps:
+          1. Review the setup report
+          2. Test CLI extensions: gh dy --help
+          3. Verify GitHub Actions in each repository
+          4. Train team members on new workflow
+
+    - name: Cleanup temporary directory
+      file:
+        path: "{{ temp_dir.path }}"
+        state: absent
+      when: cleanup_temp_files | default(true)
+
+
+    - name: Check if repository exists
+      uri:
+        url: "https://api.github.com/repos/{{ repo_full_name }}"
+        headers:
+          Authorization: "token {{ github_token }}"
+        method: GET
+        status_code: [200, 404]
+      register: repo_check
+
+    - name: Create repository if it doesn't exist
+      uri:
+        url: "https://api.github.com/orgs/{{ github_org }}/repos"
+        headers:
+          Authorization: "token {{ github_token }}"
+          Content-Type: "application/json"
+        method: POST
+        body_format: json
+        body:
+          name: "{{ repo_name }}"
+          private: "{{ repo_private }}"
+          description: "Repository with Orches Workflow"
+        status_code: 201
+      when: repo_check.status == 404
+
+    - name: Setup repository labels
+      command: >
+        {{ temp_dir.path }}/labels-ensure.sh
+        {{ repo_full_name }}
+      environment:
+        GITHUB_TOKEN: "{{ github_token }}"
+
+    - name: Create .github/workflows directory
+      uri:
+        url: "https://api.github.com/repos/{{ repo_full_name }}/contents/.github/workflows/.gitkeep"
+        headers:
+          Authorization: "token {{ github_token }}"
+          Content-Type: "application/json"
+        method: PUT
+        body_format: json
+        body:
+          message: "Create workflows directory"
+          content: "{{ '' | b64encode }}"
+        status_code: [201, 422]  # 422 if file already exists
+
+    - name: Install GitHub Actions workflows
+      uri:
+        url: "https://api.github.com/repos/{{ repo_full_name }}/contents/.github/workflows/{{ item.dest }}"
+        headers:
+          Authorization: "token {{ github_token }}"
+          Content-Type: "application/json"
+        method: PUT
+        body_format: json
+        body:
+          message: "Add {{ item.description }} workflow"
+          content: "{{ lookup('file', temp_dir.path + '/' + item.src) | b64encode }}"
+        status_code: [201, 422]  # 422 if file already exists
+      loop: "{{ workflow_files }}"
+
+    - name: Setup branch protection for main branch
+      uri:
+        url: "https://api.github.com/repos/{{ repo_full_name }}/branches/main/protection"
+        headers:
+          Authorization: "token {{ github_token }}"
+          Content-Type: "application/json"
+        method: PUT
+        body_format: json
+        body:
+          required_status_checks:
+            strict: true
+            contexts: ["validate", "validate-links"]
+          enforce_admins: true
+          required_pull_request_reviews:
+            required_approving_review_count: 1
+            dismiss_stale_reviews: true
+          restrictions: null
+        status_code: [200, 422]  # 422 if branch doesn't exist yet
