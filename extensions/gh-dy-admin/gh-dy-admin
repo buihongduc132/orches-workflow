@@ -13,7 +13,173 @@ Commands:
   feedback
 H
     ;;
+  setup)
+    shift
+    case "${1:-help}" in
+      labels)
+        echo "Setting up AI workflow labels..."
+        REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+
+        # Create labels
+        gh label create "ai-task" --color "1f883d" --description "Task for AI agents" 2>/dev/null || echo "Label exists: ai-task"
+        gh label create "human-review-needed" --color "fbca04" --description "Needs human attention" 2>/dev/null || echo "Label exists: human-review-needed"
+        gh label create "cross-component" --color "8250df" --description "Spans multiple components" 2>/dev/null || echo "Label exists: cross-component"
+        gh label create "status:ai-review" --color "0e8a16" --description "AI review stage" 2>/dev/null || echo "Label exists: status:ai-review"
+        gh label create "status:ai-test" --color "0e8a16" --description "AI test stage" 2>/dev/null || echo "Label exists: status:ai-test"
+        gh label create "status:ai-approved" --color "1f883d" --description "AI approved stage" 2>/dev/null || echo "Label exists: status:ai-approved"
+
+        echo "✅ AI workflow labels configured for $REPO"
+        ;;
+      project)
+        echo "Setting up project configuration..."
+        REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+
+        # Enable issues and projects
+        gh api repos/$REPO --method PATCH --field has_issues=true --field has_projects=true >/dev/null 2>&1
+
+        echo "✅ Project features enabled for $REPO"
+        ;;
+      templates)
+        echo "Setting up GitHub templates..."
+        REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+
+        # Check if we're in the orches-workflow repo
+        if [[ -f "$REPO_ROOT/templates/rules/enforce-pr-links.yml" ]]; then
+          mkdir -p .github/workflows .github/ISSUE_TEMPLATE
+
+          # Copy workflows if they don't exist
+          [[ ! -f .github/workflows/enforce-pr-links.yml ]] && cp "$REPO_ROOT/templates/rules/enforce-pr-links.yml" .github/workflows/
+          [[ ! -f .github/workflows/branch-protection.yml ]] && cp "$REPO_ROOT/templates/rules/branch-protection.yml" .github/workflows/
+
+          echo "✅ GitHub Actions workflows installed"
+        else
+          echo "⚠️  Templates not found. Run from orches-workflow repository or download templates manually."
+        fi
+        ;;
+      repo)
+        echo "Setting up complete repository configuration..."
+        gh dy-admin setup labels
+        gh dy-admin setup project
+        gh dy-admin setup templates
+        echo "✅ Repository setup complete"
+        ;;
+      *)
+        echo "Setup commands: labels, project, templates, repo"
+        ;;
+    esac
+    ;;
+  label)
+    shift
+    case "${1:-help}" in
+      ensure)
+        gh dy-admin setup labels
+        ;;
+      *)
+        echo "Label commands: ensure"
+        ;;
+    esac
+    ;;
+  project)
+    shift
+    case "${1:-help}" in
+      status)
+        REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+        echo "Project Status for $REPO:"
+        echo "========================"
+
+        # Check labels
+        echo "Labels:"
+        gh label list --json name,color,description -q '.[] | select(.name | test("ai-|status:|human-review|cross-component")) | "  ✅ \(.name) - \(.description)"' 2>/dev/null || echo "  ❌ No AI workflow labels found"
+
+        # Check workflows
+        echo ""
+        echo "GitHub Actions:"
+        if [[ -f .github/workflows/enforce-pr-links.yml ]]; then
+          echo "  ✅ PR link enforcement"
+        else
+          echo "  ❌ PR link enforcement not configured"
+        fi
+
+        if [[ -f .github/workflows/branch-protection.yml ]]; then
+          echo "  ✅ Branch protection rules"
+        else
+          echo "  ❌ Branch protection rules not configured"
+        fi
+
+        # Check branch protection
+        echo ""
+        echo "Branch Protection:"
+        if gh api repos/$REPO/branches/main/protection >/dev/null 2>&1; then
+          echo "  ✅ Main branch protected"
+        else
+          echo "  ❌ Main branch not protected"
+        fi
+        ;;
+      ensure-fields)
+        echo "Project field management not yet implemented"
+        echo "This would create custom fields for AI agent tracking"
+        ;;
+      *)
+        echo "Project commands: status, ensure-fields"
+        ;;
+    esac
+    ;;
+  workflow)
+    shift
+    case "${1:-describe}" in
+      describe)
+        cat <<WORKFLOW_DESC
+Orches Workflow - AI-First GitHub Collaboration
+
+## Core Components
+1. **Safeguard Rules**: GitHub Actions preventing scope mixing and enforcing links
+2. **CLI Extensions**: gh-dy (daily ops) and gh-dy-admin (setup)
+3. **Bootstrap Scripts**: Automated label and field creation
+4. **Documentation**: Comprehensive guides and templates
+
+## Workflow Process
+1. Create task: gh dy task create "description"
+2. Work in feature branch
+3. Create PR with proper links and AI agent info
+4. Review and merge through GitHub
+
+## Setup Commands
+- gh dy-admin setup repo     # Complete setup
+- gh dy-admin setup labels   # Just labels
+- gh dy-admin project status # Check configuration
+
+## Daily Commands
+- gh dy task create/claim/progress
+- gh dy dashboard agent/review
+- gh dy pr checks/merge-if-green
+
+Run 'gh dy ai-instructions' for detailed AI guidance.
+WORKFLOW_DESC
+        ;;
+      *)
+        echo "Workflow commands: describe"
+        ;;
+    esac
+    ;;
+  feedback)
+    cat <<FEEDBACK
+Orches Workflow Feedback
+
+Please provide feedback on:
+1. Workflow effectiveness
+2. CLI extension usability
+3. Documentation clarity
+4. Missing features
+
+Submit feedback:
+- GitHub Issues: https://github.com/buihongduc132/orches-workflow/issues
+- Discussions: https://github.com/buihongduc132/orches-workflow/discussions
+
+Your input helps improve the AI-first workflow experience!
+FEEDBACK
+    ;;
   *)
-    echo "TODO: implement admin subcommands. Use 'gh dy-admin --help' for usage.";
+    echo "Available commands: setup, project, label, workflow, feedback"
+    echo "Run 'gh dy-admin --help' for detailed usage"
     ;;
  esac

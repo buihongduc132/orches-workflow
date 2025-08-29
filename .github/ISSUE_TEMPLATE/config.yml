@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📚 Documentation
+    url: https://github.com/buihongduc132/orches-workflow/wiki
+    about: Check the project wiki for documentation
+  - name: 💬 Discussions
+    url: https://github.com/buihongduc132/orches-workflow/discussions
+    about: Ask questions and discuss ideas
+  - name: 🤖 AI Instructions
+    url: https://github.com/buihongduc132/orches-workflow#ai-instructions
+    about: Instructions for AI agents working with this project
