@@ -11,6 +11,7 @@ Commands:
   pr [await|queue|checks|draft|merge-if-green]
   discuss [feature|comment|link]
   workflow describe
+  ai-instructions
   feedback
 Use --repo owner/repo to target a repo; auto-detects when omitted.
 H
@@ -22,7 +23,261 @@ H
     shift
     if command -v gh-dy-admin >/dev/null 2>&1; then exec gh-dy-admin "$@"; else echo "Admin extension not installed. Run: gh extension install <owner>/gh-dy-admin"; exit 1; fi
     ;;
+  ai-instructions)
+    cat <<AI_INSTRUCTIONS
+# AI Instructions for Orches Workflow
+
+## Overview
+You are working with a repository that uses the Orches Workflow system - an AI-first GitHub workflow designed for seamless AI-human collaboration.
+
+## Core Principles
+1. **PR-Only Development**: All changes must go through pull requests
+2. **Documentation Links**: Every PR must link to relevant documentation, issues, or tasks
+3. **AI Agent Tracking**: Include AI agent information in PRs and commits
+4. **Scope Separation**: Keep changes focused and well-scoped
+
+## Available Commands
+
+### Daily Operations (gh dy)
+- \`gh dy task create "description"\` - Create new task/issue
+- \`gh dy task claim ISSUE_NUMBER\` - Claim an existing task
+- \`gh dy task progress ISSUE_NUMBER\` - Update task progress
+- \`gh dy dashboard agent\` - View AI agent dashboard
+- \`gh dy dashboard review\` - View items needing review
+- \`gh dy pr checks\` - Check PR status
+- \`gh dy pr merge-if-green\` - Auto-merge if checks pass
+
+### Administrative (gh dy-admin)
+- \`gh dy-admin setup labels\` - Setup workflow labels
+- \`gh dy-admin setup project\` - Setup project configuration
+- \`gh dy-admin label ensure\` - Ensure all required labels exist
+
+## Workflow Process
+
+### 1. Starting Work
+\`\`\`bash
+# Create and claim a task
+gh dy task create "Implement feature X"
+gh dy task claim ISSUE_NUMBER
+
+# Create feature branch
+git checkout -b feature/implement-x
+\`\`\`
+
+### 2. Making Changes
+- Make your code changes
+- Ensure tests pass
+- Update documentation as needed
+
+### 3. Creating PR
+\`\`\`bash
+# Commit with proper message
+git commit -m "feat: implement feature X
+
+AI Agent: [Your AI Model]
+Addresses: #ISSUE_NUMBER"
+
+# Push and create PR
+git push origin feature/implement-x
+gh pr create --title "feat: implement feature X" --body "
+## Description
+Brief description of changes
+
+## Related Links
+- Issue: #ISSUE_NUMBER
+- Documentation: [Link to relevant docs]
+
+## AI Agent Information
+- AI Agent: [Your AI Model]
+- Human Review: Required
+
+## Type of Change
+- [x] New feature
+"
+\`\`\`
+
+### 4. PR Requirements
+Every PR must include:
+- **Issue Link**: Reference to GitHub issue (#123 or full URL)
+- **Documentation Link**: Link to wiki, docs, or .md files
+- **AI Agent Info**: Which AI model was used
+- **Type of Change**: Bug fix, feature, documentation, etc.
+
+### 5. Review Process
+\`\`\`bash
+# Check PR status
+gh dy pr checks
+
+# View review dashboard
+gh dy dashboard review
+
+# Merge when ready
+gh dy pr merge-if-green
+\`\`\`
+
+## Common Patterns
+
+### Bug Fix
+\`\`\`bash
+gh dy task create "Fix bug in authentication"
+git checkout -b fix/auth-bug
+# Make fixes
+gh pr create --title "fix: resolve authentication bug" --body "
+- Issue: #123
+- Documentation: Updated troubleshooting guide
+- AI Agent: Claude-3.5-Sonnet
+"
+\`\`\`
+
+### Feature Development
+\`\`\`bash
+gh dy task create "Add user dashboard"
+git checkout -b feature/user-dashboard
+# Implement feature
+gh pr create --title "feat: add user dashboard" --body "
+- Issue: #124
+- Documentation: Added dashboard usage guide
+- AI Agent: GPT-4
+"
+\`\`\`
+
+### Documentation Update
+\`\`\`bash
+gh dy task create "Update API documentation"
+git checkout -b docs/api-update
+# Update docs
+gh pr create --title "docs: update API documentation" --body "
+- Issue: #125
+- Documentation: Updated API reference
+- AI Agent: Claude-3.5-Sonnet
+"
+\`\`\`
+
+## Error Handling
+
+### Missing Links in PR
+If GitHub Actions fail due to missing links:
+1. Edit PR description to include required links
+2. Ensure format matches: "Issue: #123" and "Documentation: [link]"
+3. Re-run checks
+
+### Branch Protection Issues
+If direct push is blocked:
+1. Create feature branch: \`git checkout -b feature/your-change\`
+2. Push to feature branch: \`git push origin feature/your-change\`
+3. Create PR: \`gh pr create\`
+
+## Project Structure
+- \`flow/\` - Project documentation and plans
+- \`templates/\` - GitHub Actions and templates
+- \`scripts/\` - Bootstrap and utility scripts
+- \`extensions/\` - CLI extensions (gh-dy, gh-dy-admin)
+- \`ansible/\` - Automation playbooks
+
+## Getting Help
+- \`gh dy --help\` - Command help
+- \`gh dy-admin --help\` - Admin command help
+- \`gh dy workflow describe\` - Describe current workflow
+- Check project documentation in \`flow/\` directory
+
+## Best Practices
+1. Always work in feature branches
+2. Include comprehensive PR descriptions
+3. Link to relevant documentation
+4. Test changes before creating PR
+5. Use descriptive commit messages
+6. Include AI agent information
+7. Respond to review feedback promptly
+
+Remember: This workflow is designed to enhance AI-human collaboration while maintaining code quality and proper documentation practices.
+AI_INSTRUCTIONS
+    ;;
+  workflow)
+    shift
+    case "${1:-describe}" in
+      describe)
+        cat <<WORKFLOW
+Current Workflow Status for $(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo "current repository"):
+
+## Repository Configuration
+- Branch Protection: $(gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/branches/main/protection >/dev/null 2>&1 && echo "✅ Enabled" || echo "❌ Not configured")
+- Required Labels: $(gh label list --json name -q 'map(.name) | join(", ")' 2>/dev/null || echo "Not available")
+
+## Workflow Requirements
+✅ All changes through PRs
+✅ PR documentation links required
+✅ AI agent information tracking
+✅ Branch protection enabled
+
+## Available Commands
+Run 'gh dy --help' for full command list
+Run 'gh dy ai-instructions' for AI-specific guidance
+
+## Quick Start
+1. Create task: gh dy task create "description"
+2. Create branch: git checkout -b feature/name
+3. Make changes and commit
+4. Create PR: gh pr create (with proper links)
+5. Merge: gh dy pr merge-if-green
+WORKFLOW
+        ;;
+      *)
+        echo "Unknown workflow command: $1"
+        echo "Available: describe"
+        ;;
+    esac
+    ;;
+  task)
+    shift
+    case "${1:-help}" in
+      create)
+        shift
+        TITLE="${1:?Usage: gh dy task create 'title'}"
+        echo "Creating task: $TITLE"
+        gh issue create --title "$TITLE" --label "ai-task" --body "
+## Task Description
+$TITLE
+
+## AI Agent
+Created by: $(whoami)
+Date: $(date)
+
+## Acceptance Criteria
+- [ ] Implementation complete
+- [ ] Tests added/updated
+- [ ] Documentation updated
+- [ ] PR created with proper links
+
+## Related Links
+- Documentation: [To be added]
+- Project: [To be added]
+"
+        ;;
+      claim)
+        ISSUE="${2:?Usage: gh dy task claim ISSUE_NUMBER}"
+        echo "Claiming task #$ISSUE"
+        gh issue edit "$ISSUE" --add-assignee "@me" --add-label "status:ai-review"
+        ;;
+      progress)
+        ISSUE="${2:?Usage: gh dy task progress ISSUE_NUMBER}"
+        echo "Updating progress for task #$ISSUE"
+        gh issue comment "$ISSUE" --body "Progress update: $(date)
+
+Current status: In progress
+AI Agent: $(whoami)
+
+Updates:
+- [Add your progress notes here]
+"
+        ;;
+      *)
+        echo "Task commands: create, claim, progress, block, review, close, link, add-to-project"
+        ;;
+    esac
+    ;;
   *)
-    echo "TODO: implement subcommands. Use 'gh dy --help' for usage.";
+    echo "Available commands: task, dashboard, triage, pr, discuss, workflow, ai-instructions"
+    echo "Run 'gh dy --help' for detailed usage"
+    echo "Run 'gh dy ai-instructions' for AI-specific guidance"
     ;;
  esac
