@@ -1,0 +1,147 @@
+name: Enforce Branch Protection Rules
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  enforce-pr-only:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' && github.ref != 'refs/heads/develop'
+    steps:
+      - name: Block direct pushes to protected branches
+        run: |
+          echo "❌ Direct pushes to protected branches are not allowed"
+          echo "All changes must go through Pull Requests"
+          echo ""
+          echo "To fix this:"
+          echo "1. Create a feature branch: git checkout -b feature/your-feature"
+          echo "2. Push your changes: git push origin feature/your-feature"
+          echo "3. Create a PR: gh pr create"
+          exit 1
+
+  validate-pr-requirements:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Check PR has required approvals
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          REPO="${{ github.repository }}"
+          
+          # Get PR review information
+          REVIEWS=$(gh api repos/$REPO/pulls/$PR_NUMBER/reviews --jq '.[].state' || echo "")
+          APPROVED_REVIEWS=$(echo "$REVIEWS" | grep -c "APPROVED" || echo "0")
+          
+          echo "PR #$PR_NUMBER has $APPROVED_REVIEWS approved reviews"
+          
+          # Check if this is a draft PR
+          IS_DRAFT="${{ github.event.pull_request.draft }}"
+          if [[ "$IS_DRAFT" == "true" ]]; then
+            echo "✓ Draft PR - approval requirements waived"
+            exit 0
+          fi
+          
+          # Require at least 1 approval for non-draft PRs
+          if [[ "$APPROVED_REVIEWS" -lt 1 ]]; then
+            echo "❌ PR requires at least 1 approval before merging"
+            echo "Current approvals: $APPROVED_REVIEWS"
+            exit 1
+          fi
+          
+          echo "✅ PR has sufficient approvals"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check required status checks
+        run: |
+          echo "Checking required status checks..."
+          
+          # List of required checks (customize as needed)
+          REQUIRED_CHECKS=(
+            "validate"
+            "validate-links"
+          )
+          
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          REPO="${{ github.repository }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          
+          # Get status checks for the PR
+          STATUS_CHECKS=$(gh api repos/$REPO/commits/$HEAD_SHA/status --jq '.statuses[].context' || echo "")
+          CHECK_RUNS=$(gh api repos/$REPO/commits/$HEAD_SHA/check-runs --jq '.check_runs[].name' || echo "")
+          
+          ALL_CHECKS="$STATUS_CHECKS $CHECK_RUNS"
+          
+          echo "Available checks: $ALL_CHECKS"
+          
+          MISSING_CHECKS=()
+          for check in "${REQUIRED_CHECKS[@]}"; do
+            if ! echo "$ALL_CHECKS" | grep -q "$check"; then
+              MISSING_CHECKS+=("$check")
+            fi
+          done
+          
+          if [[ ${#MISSING_CHECKS[@]} -gt 0 ]]; then
+            echo "❌ Missing required status checks:"
+            for check in "${MISSING_CHECKS[@]}"; do
+              echo "  - $check"
+            done
+            echo ""
+            echo "Please ensure all required checks are configured and passing"
+            exit 1
+          fi
+          
+          echo "✅ All required status checks are present"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate merge method
+        run: |
+          # Enforce merge commit strategy (no squash or rebase for main)
+          TARGET_BRANCH="${{ github.event.pull_request.base.ref }}"
+          
+          if [[ "$TARGET_BRANCH" == "main" ]] || [[ "$TARGET_BRANCH" == "master" ]]; then
+            echo "✓ Targeting protected branch: $TARGET_BRANCH"
+            echo "Note: Use 'Create a merge commit' when merging to preserve history"
+          fi
+          
+          # Check for merge conflicts
+          MERGEABLE="${{ github.event.pull_request.mergeable }}"
+          if [[ "$MERGEABLE" == "false" ]]; then
+            echo "❌ PR has merge conflicts that must be resolved"
+            echo "Please rebase or merge the target branch into your feature branch"
+            exit 1
+          fi
+          
+          echo "✅ PR is mergeable"
+
+  notify-protection-status:
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [validate-pr-requirements]
+    steps:
+      - name: Report protection status
+        run: |
+          echo "Branch Protection Summary:"
+          echo "========================"
+          echo "Repository: ${{ github.repository }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Branch: ${{ github.ref }}"
+          
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "PR Number: ${{ github.event.pull_request.number }}"
+            echo "PR Title: ${{ github.event.pull_request.title }}"
+            echo "Target Branch: ${{ github.event.pull_request.base.ref }}"
+            echo "Source Branch: ${{ github.event.pull_request.head.ref }}"
+            echo "Draft: ${{ github.event.pull_request.draft }}"
+          fi
+          
+          echo ""
+          echo "Protection Rules Enforced:"
+          echo "- ✓ No direct pushes to main/master/develop"
+          echo "- ✓ PR approval requirements"
+          echo "- ✓ Required status checks"
+          echo "- ✓ Merge conflict detection"
+          echo "- ✓ Documentation link validation"

@@ -1,0 +1,122 @@
+---
+# Example variables file for Orches Workflow replication
+# Copy this file to vars.yml and customize for your repositories
+
+# List of repositories to setup with Orches Workflow
+repositories:
+  - name: "my-app"
+    private: true
+    description: "Main application repository"
+  - name: "my-api"
+    private: true
+    description: "API service repository"
+  - name: "my-docs"
+    private: false
+    description: "Documentation repository"
+  - name: "my-tools"
+    private: true
+    description: "Internal tools and scripts"
+
+# Custom labels (extends default workflow labels)
+additional_labels:
+  - name: "priority:high"
+    color: "d73a4a"
+    description: "High priority item"
+  - name: "priority:medium"
+    color: "fbca04"
+    description: "Medium priority item"
+  - name: "priority:low"
+    color: "0e8a16"
+    description: "Low priority item"
+  - name: "type:enhancement"
+    color: "a2eeef"
+    description: "New feature or request"
+  - name: "type:bug"
+    color: "d73a4a"
+    description: "Something isn't working"
+  - name: "type:documentation"
+    color: "0075ca"
+    description: "Improvements or additions to documentation"
+
+# GitHub Actions workflows to install (extends defaults)
+additional_workflows:
+  - src: "custom-ci.yml"
+    dest: "custom-ci.yml"
+    description: "Custom CI pipeline"
+
+# Branch protection settings (optional customization)
+branch_protection:
+  required_status_checks:
+    strict: true
+    contexts:
+      - "validate"
+      - "validate-links"
+      - "enforce-pr-only"
+      - "ci"  # Add your custom CI check
+  enforce_admins: false
+  required_pull_request_reviews:
+    required_approving_review_count: 1
+    dismiss_stale_reviews: true
+    require_code_owner_reviews: true  # Enable if you have CODEOWNERS file
+  restrictions: null
+  allow_force_pushes: false
+  allow_deletions: false
+
+# Organization-wide settings
+organization:
+  # Default repository settings
+  default_branch: "main"
+  
+  # Team assignments (optional)
+  teams:
+    - name: "developers"
+      permission: "push"
+    - name: "maintainers"
+      permission: "admin"
+
+# Project board configuration
+project_config:
+  # Custom fields to add to the project
+  custom_fields:
+    - name: "Priority"
+      type: "single_select"
+      options:
+        - "High"
+        - "Medium"
+        - "Low"
+    - name: "Component"
+      type: "single_select"
+      options:
+        - "Frontend"
+        - "Backend"
+        - "Database"
+        - "Infrastructure"
+    - name: "Effort"
+      type: "number"
+      description: "Story points or effort estimation"
+
+# Notification settings
+notifications:
+  # Slack webhook for setup notifications (optional)
+  slack_webhook: "{{ lookup('env', 'SLACK_WEBHOOK_URL') }}"
+  
+  # Email notifications (optional)
+  email_recipients:
+    - "devops@yourcompany.com"
+    - "team-leads@yourcompany.com"
+
+# Advanced configuration
+advanced:
+  # Skip certain setup steps
+  skip_steps:
+    - "branch_protection"  # Skip if you want to set this up manually
+    # - "workflows"        # Skip GitHub Actions setup
+    # - "labels"           # Skip label creation
+    # - "templates"        # Skip template creation
+  
+  # Retry configuration
+  retry_count: 3
+  retry_delay: 5
+  
+  # Parallel execution
+  max_parallel_repos: 5
